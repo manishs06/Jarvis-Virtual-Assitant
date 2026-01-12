@@ -1,5 +1,10 @@
-SpeechRecognition==3.14.3
-pyttsx3==2.90
-requests==2.32.3
-python-dotenv==1.1.0
-PyAudio==0.2.14 
+SpeechRecognition>=3.10.0
+pyttsx3>=2.90
+requests>=2.31.0
+python-dotenv>=1.0.0
+# PyAudio is required for microphone input
+# Windows users: pip install pipwin && pipwin install pyaudio
+# Linux users: sudo apt-get install python3-pyaudio
+# Mac users: brew install portaudio && pip install pyaudio
+# Offline AI (No Key Required)
+gpt4all>=2.5.0 

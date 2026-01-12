@@ -86,51 +86,82 @@ def listen(retry_count=3):
     return ""
 
 def get_ai_response(prompt):
-    """Get AI response with better error handling and fallback"""
-    if not HF_API_KEY:
-        return "AI API key not configured. Please add your Hugging Face API key to the .env file."
+    """Get AI response with multiple fallbacks: HuggingFace -> g4f (Free)"""
     
-    try:
-        headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-        payload = {
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": 250,
-                "temperature": 0.7,
-                "top_p": 0.95,
-                "do_sample": True
-            }
-        }
-        
-        # Try primary model first
+    # 1. Try Hugging Face API if key is configured
+    if HF_API_KEY and HF_API_KEY != "your_huggingface_api_key_here":
         try:
-            response = requests.post(
-                "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
-                headers=headers,
-                json=payload,
-                timeout=10
-            )
+            headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+            payload = {
+                "inputs": prompt,
+                "parameters": {
+                    "max_new_tokens": 150,
+                    "temperature": 0.7,
+                    "top_p": 0.95,
+                    "do_sample": True,
+                    "return_full_text": False
+                }
+            }
             
-            if response.status_code == 200:
-                return response.json()[0]['generated_text']
+            # Try primary model first
+            try:
+                response = requests.post(
+                    "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
+                    headers=headers,
+                    json=payload,
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if isinstance(result, list) and len(result) > 0:
+                        if isinstance(result[0], dict) and 'generated_text' in result[0]:
+                            return result[0]['generated_text']
+                        elif isinstance(result[0], str):
+                            return result[0]
+                    elif isinstance(result, dict) and 'generated_text' in result:
+                        return result['generated_text']
+            except Exception as e:
+                print(f"Primary HF model failed: {e}")
         except Exception as e:
-            print(f"Primary model failed: {e}")
+            print(f"Hugging Face API error: {e}")
+
+    # 2. Fallback to GPT4All (Local Offline AI)
+    print("Using Local AI (GPT4All)...")
+    try:
+        from gpt4all import GPT4All
+        # Use a lightweight model (Orca Mini 3B) - approx 2GB
+        # It will auto-download to %USERPROFILE%/.cache/gpt4all/ on first run
+        model_name = "orca-mini-3b-gguf2-q4_0.gguf"
         
-        # Fallback to simpler model
-        response = requests.post(
-            "https://api-inference.huggingface.co/models/google/flan-t5-base",
-            headers=headers,
-            json=payload,
-            timeout=10
-        )
+        # Initialize model (suppress stdout to keep console clean)
+        model = GPT4All(model_name, allow_download=False) # Check if exists first
         
-        if response.status_code == 200:
-            return response.json()[0]['generated_text']
-        else:
-            return f"Error getting AI response: {response.status_code}"
-            
+        # If not exists, we must download. 
+        # But we can't easily check existence via the class without triggering download if allow_download=True
+        # So we just init with allow_download=True inside a message block
+        
+    except Exception:
+        pass # Fall through to retry with download
+
+    try:
+        from gpt4all import GPT4All
+        model_name = "orca-mini-3b-gguf2-q4_0.gguf"
+        
+        print(f"Loading local AI model '{model_name}'...")
+        print("(This may take a few minutes to download 2GB on the first run)")
+        
+        model = GPT4All(model_name)
+        
+        # Generate response
+        output = model.generate(prompt, max_tokens=150)
+        return output
+        
+    except ImportError:
+        return "I need the 'gpt4all' library for local AI. Please run: pip install gpt4all"
     except Exception as e:
-        return f"Error with AI service: {str(e)}"
+        print(f"GPT4All error: {e}")
+        return f"I'm having trouble with the local AI: {str(e)}"
 
 # List of supported cities with their coordinates
 SUPPORTED_CITIES = {
